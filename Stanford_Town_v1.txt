@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI 进化小镇 - 沉浸式培训班</title>
+    
+    <!-- 核心依赖 -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+
+    <style>
+        /* --- 全局样式定义 --- */
+        :root {
+            --bg-dark: #0f172a;
+            --pixel-font: 'Press Start 2P', cursive;
+        }
+        body {
+            background-color: var(--bg-dark);
+            color: white;
+            font-family: var(--pixel-font);
+            overflow: hidden;
+            user-select: none;
+        }
+
+        /* 像素化渲染 */
+        .pixelated {
+            image-rendering: pixelated;
+        }
+
+        /* 玻璃拟态面板 */
+        .glass-panel {
+            background: rgba(15, 23, 42, 0.85);
+            backdrop-filter: blur(8px);
+            border: 2px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.5);
+        }
+
+        /* 扫描线特效 */
+        .scanlines {
+            background: linear-gradient(to bottom, rgba(255,255,255,0), rgba(255,255,255,0) 50%, rgba(0,0,0,0.1) 50%, rgba(0,0,0,0.1));
+            background-size: 100% 4px;
+            position: fixed; inset: 0; pointer-events: none; z-index: 50;
+        }
+
+        /* 地形纹理 (纯CSS绘制) */
+        .tile-grass {
+            background-color: #22c55e;
+            background-image: radial-gradient(#15803d 15%, transparent 16%), radial-gradient(#15803d 15%, transparent 16%);
+            background-size: 16px 16px;
+            background-position: 0 0, 8px 8px;
+        }
+        .tile-path {
+            background-color: #64748b;
+            background-image: linear-gradient(45deg, #475569 25%, transparent 25%, transparent 75%, #475569 75%, #475569), linear-gradient(45deg, #475569 25%, transparent 25%, transparent 75%, #475569 75%, #475569);
+            background-size: 20px 20px;
+            background-position: 0 0, 10px 10px;
+        }
+        .tile-wall {
+            background-color: #334155;
+            background-image: linear-gradient(to right, #1e293b 1px, transparent 1px), linear-gradient(to bottom, #1e293b 1px, transparent 1px);
+            background-size: 8px 8px;
+            box-shadow: inset 0 0 10px #000;
+        }
+
+        /* 角色呼吸动画 */
+        @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
+        .npc-float { animation: float 2s infinite ease-in-out; }
+
+        /* 简单的打字机光标 */
+        .cursor-blink::after { content: '|'; animation: blink 1s infinite; }
+        @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        // --- 1. 游戏配置 ---
+        const CELL_SIZE = 48; // 每个格子的像素大小
+        const MAP_WIDTH = 16;
+        const MAP_HEIGHT = 12;
+        
+        // 地图数据: 0=草地, 1=路, 9=墙/障碍
+        const INITIAL_MAP = [
+            [9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9],
+            [9,0,0,0,0,0,9,0,0,0,0,0,0,0,0,9],
+            [9,0,0,0,0,0,9,0,0,0,0,0,0,0,0,9],
+            [9,0,1,1,1,1,1,1,1,1,1,0,0,0,0,9],
+            [9,0,1,0,0,0,1,0,0,0,1,0,0,0,0,9],
+            [9,0,1,0,0,0,1,0,0,0,1,1,1,1,0,9],
+            [9,0,1,1,1,0,1,0,0,0,0,0,0,1,0,9],
+            [9,0,0,0,1,0,1,1,1,0,0,0,0,1,0,9],
+            [9,0,0,0,1,0,0,0,1,0,0,0,0,1,0,9],
+            [9,0,1,1,1,1,1,1,1,1,1,1,1,1,0,9],
+            [9,0,0,0,0,0,0,0,0,0,0,0,0,0,0,9],
+            [9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9],
+        ];
+
+        // NPC 定义
+        const NPCS = [
+            { id: 1, name: "提示词大师", title: "三板斧教学", x: 4, y: 5, avatar: "🧙‍♂️", color: "text-purple-400", type: "prompt", desc: "请用结构化提示词（角色+任务+要求）描述你要让AI写一首诗。" },
+            { id: 2, name: "光影画师", title: "Midjourney 专家", x: 10, y: 3, avatar: "🎨", color: "text-pink-400", type: "image", desc: "请写出生成一张赛博朋克猫的提示词，需包含：主体、风格、参数。" },
+            { id: 3, name: "视频导演", title: "Sora 导师", x: 13, y: 9, avatar: "🎬", color: "text-blue-400", type: "video", desc: "写一个视频运镜指令：包含推镜头(Dolly In)和主体描述。" },
+            { id: 4, name: "Coze 架构师", title: "Agent 搭建", x: 2, y: 9, avatar: "🤖", color: "text-green-400", type: "coze", desc: "搭建一个 Bot 需要哪三个核心组件？" }
+        ];
+
+        // 模拟排行榜数据
+        const MOCK_LEADERBOARD = [
+            { name: "张伟", score: 2450 },
+            { name: "Emily", score: 2100 },
+            { name: "Li Hua", score: 1850 },
+            { name: "王大锤", score: 1600 },
+            { name: "TechBoy", score: 1200 },
+        ];
+
+        // --- 2. 核心组件 ---
+
+        function App() {
+            // 玩家状态
+            const [pos, setPos] = useState({ x: 7, y: 6 });
+            const [direction, setDirection] = useState('down'); // up, down, left, right
+            const [score, setScore] = useState(0);
+            const [inventory, setInventory] = useState([]);
+            const [playerAvatar, setPlayerAvatar] = useState(null); // 用户上传头像
+            
+            // 交互状态
+            const [activeNPC, setActiveNPC] = useState(null); // 当前对话的 NPC
+            const [chatInput, setChatInput] = useState("");
+            const [chatHistory, setChatHistory] = useState([]); // 助教聊天记录
+            const [showHelper, setShowHelper] = useState(false);
+            const [leaderboard, setLeaderboard] = useState(MOCK_LEADERBOARD);
+
+            // 移动逻辑
+            useEffect(() => {
+                const handleKeyDown = (e) => {
+                    if (activeNPC || showHelper) return; // 对话时禁止移动
+
+                    let dx = 0, dy = 0;
+                    let newDir = direction;
+
+                    if (['w', 'W', 'ArrowUp'].includes(e.key)) { dy = -1; newDir = 'up'; }
+                    else if (['s', 'S', 'ArrowDown'].includes(e.key)) { dy = 1; newDir = 'down'; }
+                    else if (['a', 'A', 'ArrowLeft'].includes(e.key)) { dx = -1; newDir = 'left'; }
+                    else if (['d', 'D', 'ArrowRight'].includes(e.key)) { dx = 1; newDir = 'right'; }
+                    else return;
+
+                    const newX = pos.x + dx;
+                    const newY = pos.y + dy;
+
+                    // 碰撞检测
+                    if (INITIAL_MAP[newY] && INITIAL_MAP[newY][newX] !== 9) {
+                        setPos({ x: newX, y: newY });
+                    }
+                    setDirection(newDir);
+                };
+
+                window.addEventListener('keydown', handleKeyDown);
+                return () => window.removeEventListener('keydown', handleKeyDown);
+            }, [pos, activeNPC, showHelper]);
+
+            // 交互检测 (当你走到 NPC 旁边)
+            useEffect(() => {
+                const nearbyNPC = NPCS.find(npc => Math.abs(npc.x - pos.x) + Math.abs(npc.y - pos.y) <= 1);
+                if (nearbyNPC && !activeNPC) {
+                    // 自动弹出交互提示，这里简化为直接按空格或点击触发，
+                    // 为了演示方便，我们用一个状态来显示“按空格对话”
+                }
+            }, [pos]);
+
+            // 模拟排行榜实时变化
+            useEffect(() => {
+                const interval = setInterval(() => {
+                    setLeaderboard(prev => {
+                        const newBoard = [...prev];
+                        const randomIdx = Math.floor(Math.random() * newBoard.length);
+                        newBoard[randomIdx].score += 10;
+                        return newBoard.sort((a, b) => b.score - a.score);
+                    });
+                }, 5000);
+                return () => clearInterval(interval);
+            }, []);
+
+            // 头像上传处理
+            const handleAvatarUpload = (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onloadend = () => setPlayerAvatar(reader.result);
+                    reader.readAsDataURL(file);
+                }
+            };
+
+            // Coze 验证逻辑 (Mock)
+            const handleCozeValidation = () => {
+                if (!activeNPC) return;
+
+                // 模拟 API 调用延迟
+                const loadingMsg = "Coze 智能体正在思考...";
+                
+                // 简单的关键词验证逻辑 (MVP)
+                let passed = false;
+                let feedback = "";
+                
+                if (activeNPC.type === 'prompt') {
+                    if (chatInput.includes("角色") && chatInput.includes("任务") && chatInput.includes("要求")) {
+                        passed = true;
+                        feedback = "完美的结构化提示词！逻辑清晰！";
+                    } else {
+                        feedback = "缺少核心要素。请确保包含 '角色'、'任务' 和 '要求'。";
+                    }
+                } else if (activeNPC.type === 'image') {
+                    if (chatInput.includes("主体") && chatInput.includes("风格")) {
+                        passed = true;
+                        feedback = "这幅画一定会很棒！参数设置合理。";
+                    } else {
+                        feedback = "Midjourney 看不懂。请描述 '主体' 和 '风格'。";
+                    }
+                } else {
+                    passed = true; // 其他 NPC 默认通过
+                    feedback = "回答正确！";
+                }
+
+                if (passed) {
+                    setScore(s => s + 100);
+                    // 1% 掉落概率
+                    if (Math.random() < 0.99) { // 为了演示改成了 99%，实际应为 0.01
+                         // 这里演示用，实际改成 < 0.01
+                         const prize = "✨ NVIDIA RTX 4090 (虚拟版)";
+                         if (!inventory.includes(prize)) {
+                             setInventory([...inventory, prize]);
+                             alert(`运气爆棚！NPC 掉落了稀有物品：${prize}`);
+                         }
+                    }
+                    alert(`✅ 通关成功！\nAI 评价：${feedback}\n积分 +100`);
+                    setActiveNPC(null);
+                    setChatInput("");
+                } else {
+                    alert(`❌ 验证失败\nAI 评价：${feedback}\n请重试！`);
+                }
+            };
+
+            // AI 助教问答
+            const handleHelperAsk = () => {
+                const answer = "这是一个模拟的 AI 助教回复。在真实版本中，这里会连接 Coze API 来解答你关于 " + (chatInput || "AI") + " 的问题。";
+                setChatHistory([...chatHistory, { role: 'user', text: chatInput }, { role: 'ai', text: answer }]);
+                setChatInput("");
+            };
+
+            return (
+                <div className="w-full h-screen relative flex items-center justify-center bg-black">
+                    <div className="scanlines"></div>
+
+                    {/* --- 左侧栏：信息面板 --- */}
+                    <div className="absolute left-4 top-4 bottom-4 w-64 glass-panel rounded-xl p-4 flex flex-col gap-4 z-20">
+                        {/* 个人信息 */}
+                        <div className="flex flex-col items-center border-b border-white/10 pb-4">
+                            <label className="relative cursor-pointer group">
+                                <div className="w-20 h-20 rounded-full overflow-hidden border-2 border-yellow-400 bg-slate-700">
+                                    {playerAvatar ? (
+                                        <img src={playerAvatar} className="w-full h-full object-cover" />
+                                    ) : (
+                                        <div className="w-full h-full flex items-center justify-center text-2xl">👤</div>
+                                    )}
+                                </div>
+                                <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 text-[8px]">
+                                    上传头像
+                                </div>
+                                <input type="file" className="hidden" accept="image/*" onChange={handleAvatarUpload} />
+                            </label>
+                            <h2 className="mt-2 text-yellow-400">学员 No.9527</h2>
+                            <div className="text-xs text-gray-400">积分: {score}</div>
+                        </div>
+
+                        {/* 物品栏 */}
+                        <div className="flex-1 overflow-y-auto">
+                            <h3 className="text-xs text-blue-400 mb-2 border-b border-blue-400/30 pb-1">🎒 背包</h3>
+                            {inventory.length === 0 ? (
+                                <div className="text-[10px] text-gray-600 italic">暂无战利品</div>
+                            ) : (
+                                inventory.map((item, i) => (
+                                    <div key={i} className="text-[10px] bg-white/5 p-1 mb-1 rounded text-yellow-200 border border-yellow-500/30">
+                                        {item}
+                                    </div>
+                                ))
+                            )}
+                        </div>
+
+                        {/* 实时排行榜 */}
+                        <div className="flex-1">
+                            <h3 className="text-xs text-red-400 mb-2 border-b border-red-400/30 pb-1">🏆 实时榜单</h3>
+                            <div className="flex flex-col gap-2">
+                                {leaderboard.map((u, i) => (
+                                    <div key={i} className="flex justify-between text-[10px]">
+                                        <span className={i===0 ? "text-yellow-400" : "text-gray-300"}>
+                                            {i+1}. {u.name}
+                                        </span>
+                                        <span className="text-gray-500">{u.score}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* --- 中间：游戏地图区域 --- */}
+                    <div className="relative glass-panel rounded-xl overflow-hidden shadow-2xl" 
+                         style={{ width: MAP_WIDTH * CELL_SIZE, height: MAP_HEIGHT * CELL_SIZE }}>
+                        
+                        {/* 1. 渲染地图层 */}
+                        {INITIAL_MAP.map((row, y) => (
+                            <div key={y} className="flex">
+                                {row.map((cell, x) => (
+                                    <div key={`${x}-${y}`} 
+                                         className={`
+                                            w-[48px] h-[48px] border-white/5 border-[0.5px]
+                                            ${cell === 0 ? 'tile-grass' : ''}
+                                            ${cell === 1 ? 'tile-path' : ''}
+                                            ${cell === 9 ? 'tile-wall' : ''}
+                                         `}
+                                    />
+                                ))}
+                            </div>
+                        ))}
+
+                        {/* 2. 渲染 NPC */}
+                        {NPCS.map(npc => (
+                            <div key={npc.id} 
+                                 className="absolute flex flex-col items-center justify-center transition-all duration-300 npc-float cursor-pointer z-10"
+                                 style={{ left: npc.x * CELL_SIZE, top: npc.y * CELL_SIZE, width: CELL_SIZE, height: CELL_SIZE }}
+                                 onClick={() => {
+                                     if (Math.abs(npc.x - pos.x) + Math.abs(npc.y - pos.y) <= 1.5) {
+                                         setActiveNPC(npc);
+                                         setChatInput("");
+                                     }
+                                 }}
+                            >
+                                <div className="text-3xl filter drop-shadow-md">{npc.avatar}</div>
+                                <div className={`text-[8px] bg-black/70 px-1 rounded ${npc.color} whitespace-nowrap -mt-1`}>
+                                    {npc.name}
+                                </div>
+                                {/* 任务叹号 */}
+                                <div className="absolute -top-2 right-0 w-3 h-3 bg-yellow-500 rounded-full animate-bounce"></div>
+                            </div>
+                        ))}
+
+                        {/* 3. 渲染玩家 */}
+                        <div className="absolute transition-all duration-200 z-20 flex flex-col items-center"
+                             style={{ left: pos.x * CELL_SIZE, top: pos.y * CELL_SIZE, width: CELL_SIZE, height: CELL_SIZE }}>
+                            <div className="w-10 h-10 rounded-full border-2 border-white shadow-lg overflow-hidden bg-blue-600 relative">
+                                {playerAvatar ? (
+                                    <img src={playerAvatar} className="w-full h-full object-cover" />
+                                ) : (
+                                    <div className="w-full h-full flex items-center justify-center">😎</div>
+                                )}
+                            </div>
+                            <div className="text-[8px] bg-blue-600 px-1 rounded text-white mt-[-4px]">Me</div>
+                        </div>
+
+                    </div>
+
+                    {/* --- 对话框 / 任务验证框 (模态) --- */}
+                    {activeNPC && (
+                        <div className="absolute inset-0 bg-black/60 z-50 flex items-center justify-center backdrop-blur-sm">
+                            <div className="glass-panel w-[500px] p-6 rounded-xl relative flex flex-col gap-4 animate-[fadeIn_0.3s]">
+                                <button onClick={() => setActiveNPC(null)} className="absolute top-4 right-4 text-gray-400 hover:text-white">✕</button>
+                                
+                                <div className="flex gap-4 items-center border-b border-white/10 pb-4">
+                                    <div className="text-4xl">{activeNPC.avatar}</div>
+                                    <div>
+                                        <h2 className={`text-lg ${activeNPC.color}`}>{activeNPC.name}</h2>
+                                        <p className="text-xs text-gray-400">{activeNPC.title} | Coze 智能体支持</p>
+                                    </div>
+                                </div>
+
+                                <div className="bg-black/30 p-4 rounded text-sm text-gray-200 border border-white/5">
+                                    <span className="text-yellow-400 font-bold">任务目标：</span>
+                                    {activeNPC.desc}
+                                </div>
+
+                                <textarea 
+                                    className="w-full h-32 bg-slate-800 p-3 rounded text-xs text-white border border-gray-600 focus:border-blue-500 outline-none resize-none font-mono"
+                                    placeholder="在此输入你的提示词作业..."
+                                    value={chatInput}
+                                    onChange={(e) => setChatInput(e.target.value)}
+                                ></textarea>
+
+                                <button 
+                                    onClick={handleCozeValidation}
+                                    className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white rounded font-bold shadow-lg transition-all active:scale-95 flex items-center justify-center gap-2"
+                                >
+                                    <i className="ph ph-check-circle"></i> 提交作业 (验证)
+                                </button>
+                                <div className="text-[10px] text-center text-gray-500">1% 概率掉落神秘大奖</div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* --- 随身助教 (浮动按钮) --- */}
+                    <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-2">
+                        {showHelper && (
+                            <div className="glass-panel w-64 h-80 p-3 rounded-xl flex flex-col gap-2 mb-2 animate-[slideUp_0.3s]">
+                                <div className="flex justify-between items-center border-b border-white/10 pb-2">
+                                    <span className="text-xs text-green-400">🤖 AI 助教</span>
+                                    <button onClick={() => setShowHelper(false)} className="text-xs hover:text-white">收起</button>
+                                </div>
+                                <div className="flex-1 overflow-y-auto space-y-2 text-[10px]">
+                                    <div className="bg-white/10 p-2 rounded self-start">你好！我是你的助教，遇到不会的题可以问我。</div>
+                                    {chatHistory.map((msg, i) => (
+                                        <div key={i} className={`p-2 rounded max-w-[90%] ${msg.role === 'user' ? 'bg-blue-600 self-end ml-auto' : 'bg-white/10 self-start'}`}>
+                                            {msg.text}
+                                        </div>
+                                    ))}
+                                </div>
+                                <div className="flex gap-1">
+                                    <input 
+                                        type="text" 
+                                        className="flex-1 bg-black/50 border border-gray-600 rounded px-2 text-[10px]"
+                                        placeholder="输入问题..."
+                                        value={chatInput} // 复用 chatInput, 实际开发应分离
+                                        onChange={(e) => setChatInput(e.target.value)}
+                                    />
+                                    <button onClick={handleHelperAsk} className="bg-green-600 px-2 rounded text-[10px]">发送</button>
+                                </div>
+                            </div>
+                        )}
+                        <button 
+                            onClick={() => setShowHelper(!showHelper)}
+                            className="w-12 h-12 bg-green-600 rounded-full flex items-center justify-center shadow-lg hover:scale-110 transition-transform border-2 border-white"
+                        >
+                            <span className="text-2xl">?</span>
+                        </button>
+                    </div>
+                    
+                    {/* 操作提示 */}
+                    <div className="absolute bottom-4 left-1/2 -translate-x-1/2 text-xs text-gray-500 glass-panel px-4 py-1 rounded-full">
+                        WASD 移动 • 走到 NPC 旁点击交互
+                    </div>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
+```
+
+### 🎮 如何使用这个系统？
+
+1.  **左侧排行榜**：你会看到一个实时变动的榜单，模拟了其他同学正在赚取积分。
+2.  **移动**：使用键盘 `W/A/S/D` 或 `方向键` 控制你的头像在地图上行走。
+3.  **NPC 交互**：
+    * 走到 **“三板斧大师” (左侧巫师)** 旁边，点击他。
+    * 弹窗会要求你输入提示词。
+    * **测试通过**：输入包含“角色、任务、要求”的一段话（例如：“你是一个**角色**，你的**任务**是写诗，**要求**五言绝句”）。
+    * **测试失败**：随便输入几个字，AI 会拒绝你。
+4.  **随机奖励**：当你验证成功，有概率（代码里为了演示调高了概率）弹窗提示你获得显卡。
+5.  **AI 助教**：点击右下角的绿色问号按钮，可以打开助教聊天框。
+
+### 🔧 扩展建议 (接入真实 Coze)
+
+目前的 `handleCozeValidation` 函数是模拟的。当你准备好上线时，只需将该函数内的逻辑替换为真实的 `fetch` 请求：
+
+```javascript
+// 替换为真实调用
+const response = await fetch('https://api.coze.com/open_api/v2/chat', {
+    method: 'POST',
+    headers: {
+        'Authorization': 'Bearer YOUR_COZE_API_KEY',
+        'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+        bot_id: "YOUR_BOT_ID", // 对应三板斧大师的 Bot
+        user: "unique_user_id",
+        query: chatInput // 学生的作业
+    })
+});
+// 根据 Coze 返回的结果判断是否通过
