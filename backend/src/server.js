@@ -14,6 +14,9 @@ dotenv.config()
 const app = express()
 const PORT = process.env.PORT || 3000
 
+// 信任反向代理（Zeabur/Caddy 等），确保 rate-limit 能正确获取 IP
+app.set('trust proxy', true)
+
 // 初始化数据库连接
 initDatabase().then(connected => {
   if (connected) {
