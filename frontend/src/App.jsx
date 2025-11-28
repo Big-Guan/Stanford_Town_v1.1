@@ -7,6 +7,7 @@ import ControlHint from './components/ControlHint'
 import Toast from './components/Toast'
 import LoginScreen from './components/LoginScreen'
 import LevelSelect from './components/LevelSelect'
+import LevelCompleteModal from './components/LevelCompleteModal'
 import { useGameStore } from './store/gameStore'
 
 function App() {
@@ -47,6 +48,9 @@ function App() {
 
       {/* 关卡选择界面 */}
       <LevelSelect />
+
+      {/* 关卡完成弹窗 */}
+      <LevelCompleteModal />
 
       {/* AI助教 */}
       <AIAssistant />

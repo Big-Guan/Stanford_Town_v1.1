@@ -1,5 +1,6 @@
 import express from 'express'
 import { validateWithCoze } from '../services/cozeService.js'
+import { addRecordToBitable, isFeishuConfigured } from '../services/feishuService.js'
 
 const router = express.Router()
 
@@ -15,11 +16,15 @@ const router = express.Router()
  *     botId?: string,       // type='bot' 时必填
  *   },
  *   content: string,  // 用户提交的内容
+ *   // 以下为飞书记录用（可选）
+ *   playerName?: string,
+ *   levelName?: string,
+ *   npcName?: string,
  * }
  */
 router.post('/', async (req, res) => {
   try {
-    const { npcConfig, content } = req.body
+    const { npcConfig, content, playerName, levelName, npcName } = req.body
 
     // 参数验证
     if (!content) {
@@ -48,6 +53,25 @@ router.post('/', async (req, res) => {
 
     // 调用Coze API验证
     const result = await validateWithCoze(npcConfig, content)
+
+    // 异步写入飞书多维表格（不阻塞响应）
+    if (isFeishuConfigured() && playerName) {
+      setImmediate(async () => {
+        try {
+          await addRecordToBitable({
+            playerName,
+            levelName: levelName || '',
+            npcName: npcName || '',
+            playerInput: content,
+            aiResponse: result.markdown || result.feedback || '',
+            score: result.score || 0,
+            passed: result.passed,
+          })
+        } catch (err) {
+          console.error('[Feishu] 异步写入失败:', err.message)
+        }
+      })
+    }
 
     res.json(result)
   } catch (error) {

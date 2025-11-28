@@ -14,8 +14,8 @@ dotenv.config()
 const app = express()
 const PORT = process.env.PORT || 3000
 
-// 信任反向代理（Zeabur/Caddy 等），确保 rate-limit 能正确获取 IP
-app.set('trust proxy', true)
+// 信任第一个反向代理（Zeabur/Caddy），避免滥用 X-Forwarded-For
+app.set('trust proxy', 1)
 
 // 初始化数据库连接
 initDatabase().then(connected => {
@@ -34,6 +34,9 @@ const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15分钟
   max: 100, // 每个IP最多100次请求
   message: '请求过于频繁，请稍后再试',
+  standardHeaders: true,
+  legacyHeaders: false,
+  trustProxy: 1, // 与 app.set('trust proxy', 1) 保持一致
 })
 
 // 中间件

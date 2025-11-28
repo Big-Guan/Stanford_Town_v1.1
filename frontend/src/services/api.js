@@ -4,7 +4,7 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
 
 const api = axios.create({
   baseURL: API_URL,
-  timeout: 30000,
+  timeout: 180000,  // 180秒，与后端 Coze 超时一致
   headers: {
     'Content-Type': 'application/json',
   },
@@ -128,13 +128,21 @@ export const getLeaderboard = async (limit = 10) => {
  * 验证任务提交
  * @param {Object} npcConfig - NPC 配置 { type, workflowId?, botId? }
  * @param {string} content - 用户提交的内容
+ * @param {Object} [context] - 上下文信息（用于飞书记录）
+ * @param {string} [context.playerName] - 玩家姓名
+ * @param {string} [context.levelName] - 关卡名称
+ * @param {string} [context.npcName] - NPC 名称
  * @returns {Promise<Object>} { passed, feedback }
  */
-export const validateTask = async (npcConfig, content) => {
+export const validateTask = async (npcConfig, content, context = {}) => {
   try {
     const response = await api.post('/api/validate', {
       npcConfig,
       content,
+      // 飞书记录用
+      playerName: context.playerName,
+      levelName: context.levelName,
+      npcName: context.npcName,
     })
     return response.data
   } catch (error) {

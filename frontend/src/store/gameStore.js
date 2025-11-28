@@ -41,6 +41,10 @@ export const useGameStore = create((set, get) => ({
   isSaving: false,
   assistantConversationId: null,
   showLevelSelect: false, // 是否显示关卡选择界面
+  npcLastResponses: {}, // 保存每个NPC的上次回复 { npcId: { feedback, markdown, score, passed, timestamp } }
+  showLevelCompleteModal: false, // 是否显示关卡完成弹窗
+  nextLevelIndex: null, // 下一关索引
+  levelCompleteNotified: {}, // 记录哪些关卡已经提示过完成
 
   // ========================================
   // Toast 状态
@@ -62,6 +66,32 @@ export const useGameStore = create((set, get) => ({
     set((state) => ({
       toast: { ...state.toast, visible: false },
     }))
+  },
+
+  // ========================================
+  // NPC 回复缓存
+  // ========================================
+  
+  /**
+   * 保存 NPC 的回复（每次新回复会覆盖旧的）
+   */
+  saveNPCResponse: (npcId, response) => {
+    set((state) => ({
+      npcLastResponses: {
+        ...state.npcLastResponses,
+        [npcId]: {
+          ...response,
+          timestamp: Date.now(),
+        },
+      },
+    }))
+  },
+
+  /**
+   * 获取 NPC 的上次回复
+   */
+  getNPCLastResponse: (npcId) => {
+    return get().npcLastResponses[npcId] || null
   },
 
   // ========================================
@@ -97,24 +127,30 @@ export const useGameStore = create((set, get) => ({
    * 检查当前关卡是否完成
    */
   checkLevelCompletion: () => {
-    const { currentLevel, currentLevelIndex, player } = get()
+    const { currentLevel, currentLevelIndex, player, levelCompleteNotified } = get()
     if (!currentLevel) return false
 
     const completed = isLevelCompleted(currentLevel, player.completedNPCs)
     
-    if (completed) {
+    // 避免重复提示（同一关卡只提示一次）
+    const notifiedKey = `level_${currentLevelIndex}`
+    if (completed && !get().levelCompleteNotified?.[notifiedKey]) {
       const nextLevelIndex = currentLevelIndex + 1
       
+      // 标记已提示
+      set((state) => ({
+        levelCompleteNotified: {
+          ...state.levelCompleteNotified,
+          [notifiedKey]: true,
+        },
+      }))
+      
       if (nextLevelIndex < LEVELS.length) {
-        // 还有下一关
-        get().showToast(
-          `🎉 恭喜通过【${currentLevel.name}】！\n3秒后进入下一关...`,
-          'success',
-          3000
-        )
-        setTimeout(() => {
-          get().loadLevel(nextLevelIndex)
-        }, 3000)
+        // 还有下一关，显示提示让用户选择
+        set({
+          showLevelCompleteModal: true,
+          nextLevelIndex: nextLevelIndex,
+        })
       } else {
         // 全部通关
         get().showToast(
@@ -126,6 +162,37 @@ export const useGameStore = create((set, get) => ({
     }
     
     return completed
+  },
+  
+  /**
+   * 用户确认进入下一关
+   */
+  confirmNextLevel: () => {
+    const { nextLevelIndex } = get()
+    if (nextLevelIndex !== null && nextLevelIndex !== undefined) {
+      // 先关闭当前 NPC 对话框
+      set({
+        activeNPC: null,
+        chatInput: '',
+      })
+      
+      get().loadLevel(nextLevelIndex)
+      set({
+        showLevelCompleteModal: false,
+        nextLevelIndex: null,
+      })
+    }
+  },
+  
+  /**
+   * 用户选择留在当前关卡
+   */
+  stayCurrentLevel: () => {
+    set({
+      showLevelCompleteModal: false,
+      nextLevelIndex: null,
+    })
+    get().showToast('继续探索当前关卡吧！', 'info')
   },
 
   /**

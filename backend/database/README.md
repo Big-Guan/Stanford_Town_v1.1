@@ -1,89 +1,77 @@
-# 数据库配置指南
+# 数据库管理工具
 
-## Supabase 配置步骤
+## 📚 文档索引
 
-### 1. 创建 Supabase 项目
-
-1. 访问 [Supabase](https://supabase.com) 并登录
-2. 点击 "New Project" 创建新项目
-3. 填写项目信息：
-   - Name: `ai-training-town`
-   - Database Password: 设置强密码（记住它！）
-   - Region: 选择离你最近的区域
-
-### 2. 运行数据库脚本
-
-1. 在 Supabase 控制台，进入 **SQL Editor**
-2. 创建新查询，粘贴 `schema.sql` 的内容
-3. 点击 **Run** 执行脚本
-4. 确认所有表创建成功
-
-### 3. 获取 API 密钥
-
-1. 在 Supabase 控制台，进入 **Settings > API**
-2. 复制以下信息到 `.env` 文件：
-   - **Project URL**: 填入 `SUPABASE_URL`
-   - **anon public**: 填入 `SUPABASE_ANON_KEY`
-   - **service_role**: 填入 `SUPABASE_SERVICE_KEY`（仅后端使用，保密！）
-
-### 4. 配置行级安全策略 (RLS)
-
-如果需要用户认证：
-1. 在 Supabase 控制台，进入 **Authentication**
-2. 启用邮箱登录或社交登录
-3. 根据需要调整 RLS 策略
+- [数据库重置指南](./RESET_GUIDE.md) - 详细的重置操作说明
+- [数据库健康检查](./../db-health-check.js) - 自动检查和迁移脚本
+- [数据库结构](./schema-aliyun.sql) - 完整的数据库表结构
 
 ---
 
-## 本地开发（不使用 Supabase）
+## 🚀 快速开始
 
-如果暂时不想配置数据库，可以：
+### 数据库健康检查
 
-1. 不填写 `.env` 中的 `SUPABASE_*` 变量
-2. 应用会自动使用 localStorage 存储数据（仅前端）
-3. 数据不会在多设备间同步
+```bash
+cd backend
+npm run db:health
+```
 
----
+检查数据库连接、表结构、索引，并自动执行必要的迁移。
 
-## 数据表说明
+### 数据库重置
 
-### users
-存储用户基本信息
-- `id`: UUID 主键
-- `username`: 用户名
-- `email`: 邮箱
-- `avatar_url`: 头像URL
+```bash
+# 完全重置（清空所有数据）
+npm run db:reset
 
-### user_progress
-存储用户游戏进度
-- `user_id`: 关联users表
-- `score`: 积分
-- `inventory`: 背包物品（JSON数组）
-- `position`: 玩家坐标（JSON对象）
+# 只重置进度（保留用户账号）
+npm run db:reset:progress
+```
 
-### task_completions
-存储任务完成记录（用于数据分析）
-- `user_id`: 关联users表
-- `npc_id`: NPC ID
-- `task_type`: 任务类型
-- `submitted_content`: 提交内容
-- `ai_feedback`: AI反馈
-- `passed`: 是否通过
+### 数据库初始化
+
+```bash
+# 首次部署时初始化表结构
+npm run init:db
+```
 
 ---
 
-## 常见问题
+## 📋 可用命令
 
-**Q: Supabase免费吗？**
-A: 是的，免费层提供：
-- 500MB 数据库空间
-- 5GB 文件存储
-- 50,000 月活用户
-- 充足个人项目使用
+| 命令 | 说明 |
+|------|------|
+| `npm run db:health` | 检查数据库健康状态并自动迁移 |
+| `npm run db:reset` | 完全重置（清空所有数据） |
+| `npm run db:reset:progress` | 只重置进度（保留用户） |
+| `npm run db:reset:force` | 强制重置（跳过确认） |
+| `npm run init:db` | 初始化数据库表结构 |
 
-**Q: 数据会丢失吗？**
-A: Supabase 免费层数据不会丢失，但如果项目长期不活跃（>60天）可能会被暂停。
+---
 
-**Q: 可以用其他数据库吗？**
-A: 可以，代码支持任何 PostgreSQL 数据库，只需修改连接配置。
+## ⚠️ 重要提示
 
+1. **重置前请备份数据库**
+2. **生产环境操作需谨慎**
+3. **详细说明请查看 [RESET_GUIDE.md](./RESET_GUIDE.md)**
+
+---
+
+## 📊 数据库结构
+
+### 核心表
+
+- `users` - 用户基础信息
+- `user_progress` - 用户游戏进度
+- `task_completions` - 任务完成记录
+
+### 关键字段
+
+- `user_progress.level_index` - 当前关卡索引（v3 新增）
+- `user_progress.completed_npcs` - 已完成的 NPC 列表
+- `user_progress.score` - 用户积分
+
+---
+
+**最后更新：** 2025-11-28

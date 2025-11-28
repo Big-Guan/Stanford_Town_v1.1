@@ -345,6 +345,9 @@ export async function saveTaskCompletion(record) {
     // 生成UUID（使用Node.js内置crypto模块）
     const taskId = randomUUID()
     
+    // npc_id 现在是字符串类型（如 "magic_wand"），需要转为字符串存储
+    const npcIdStr = String(record.npcId)
+    
     await query(
       `INSERT INTO task_completions 
        (id, user_id, npc_id, task_type, submitted_content, ai_feedback, passed, created_at)
@@ -352,7 +355,7 @@ export async function saveTaskCompletion(record) {
       [
         taskId,
         record.userId,
-        record.npcId,
+        npcIdStr,
         record.taskType,
         record.content,
         record.feedback,
@@ -360,7 +363,7 @@ export async function saveTaskCompletion(record) {
       ]
     )
 
-    console.log(`[Database] 任务完成记录已保存`)
+    console.log(`[Database] 任务完成记录已保存 (NPC: ${npcIdStr})`)
   } catch (error) {
     console.error('[Database] 记录任务失败:', error.message)
   }
