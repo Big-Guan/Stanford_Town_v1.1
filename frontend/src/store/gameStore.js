@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { INITIAL_MAP, NPCS } from '../config/gameConfig'
+import { LEVELS, getLevelConfig, getMapSize, isLevelCompleted, getRequiredNPCIds } from '../config/levels'
 import { loginUser, saveUserProgress, getLeaderboard, completeNPC } from '../services/api'
 
 export const useGameStore = create((set, get) => ({
@@ -10,17 +10,23 @@ export const useGameStore = create((set, get) => ({
   isLoading: false,
 
   // ========================================
+  // 关卡状态
+  // ========================================
+  currentLevelIndex: 0,
+  currentLevel: LEVELS[0] || null,
+  
+  // ========================================
   // 玩家状态
   // ========================================
   player: {
     id: null,
     name: '',
-    position: { x: 7, y: 6 },
+    position: LEVELS[0]?.startPosition || { x: 1, y: 1 },
     direction: 'down',
     score: 0,
     inventory: [],
     avatar: null,
-    completedNPCs: [], // 已完成的NPC列表
+    completedNPCs: [], // 已完成的NPC列表（跨关卡累计）
   },
 
   // ========================================
@@ -34,6 +40,7 @@ export const useGameStore = create((set, get) => ({
   saveTimer: null,
   isSaving: false,
   assistantConversationId: null,
+  showLevelSelect: false, // 是否显示关卡选择界面
 
   // ========================================
   // Toast 状态
@@ -58,6 +65,96 @@ export const useGameStore = create((set, get) => ({
   },
 
   // ========================================
+  // 关卡系统
+  // ========================================
+  
+  /**
+   * 切换到指定关卡
+   */
+  loadLevel: (levelIndex) => {
+    const level = getLevelConfig(levelIndex)
+    if (!level) {
+      get().showToast('关卡不存在', 'error')
+      return false
+    }
+
+    set((state) => ({
+      currentLevelIndex: levelIndex,
+      currentLevel: level,
+      player: {
+        ...state.player,
+        position: level.startPosition || { x: 1, y: 1 },
+      },
+      showLevelSelect: false,
+    }))
+
+    get().showToast(`进入关卡 ${level.id}: ${level.name}`, 'info')
+    get().scheduleSaveProgress()
+    return true
+  },
+
+  /**
+   * 检查当前关卡是否完成
+   */
+  checkLevelCompletion: () => {
+    const { currentLevel, currentLevelIndex, player } = get()
+    if (!currentLevel) return false
+
+    const completed = isLevelCompleted(currentLevel, player.completedNPCs)
+    
+    if (completed) {
+      const nextLevelIndex = currentLevelIndex + 1
+      
+      if (nextLevelIndex < LEVELS.length) {
+        // 还有下一关
+        get().showToast(
+          `🎉 恭喜通过【${currentLevel.name}】！\n3秒后进入下一关...`,
+          'success',
+          3000
+        )
+        setTimeout(() => {
+          get().loadLevel(nextLevelIndex)
+        }, 3000)
+      } else {
+        // 全部通关
+        get().showToast(
+          `🏆 恭喜！你已通关所有关卡！\n你是真正的 AI 大师！`,
+          'success',
+          5000
+        )
+      }
+    }
+    
+    return completed
+  },
+
+  /**
+   * 获取关卡进度
+   */
+  getLevelProgress: (levelIndex) => {
+    const level = getLevelConfig(levelIndex)
+    if (!level) return { completed: 0, total: 0, percent: 0 }
+
+    const requiredIds = getRequiredNPCIds(level)
+    const completedCount = requiredIds.filter(id => 
+      get().player.completedNPCs.includes(id)
+    ).length
+
+    return {
+      completed: completedCount,
+      total: requiredIds.length,
+      percent: requiredIds.length > 0 ? Math.round((completedCount / requiredIds.length) * 100) : 0,
+    }
+  },
+
+  /**
+   * 切换关卡选择界面
+   */
+  toggleLevelSelect: () => {
+    set((state) => ({ showLevelSelect: !state.showLevelSelect }))
+  },
+
+  // ========================================
   // 用户认证
   // ========================================
   login: async (username) => {
@@ -68,14 +165,20 @@ export const useGameStore = create((set, get) => ({
 
       if (result.success) {
         const user = result.user
+        
+        // 恢复关卡进度
+        const savedLevelIndex = user.level_index || 0
+        const level = getLevelConfig(savedLevelIndex)
 
         set({
           isLoggedIn: true,
           isLoading: false,
+          currentLevelIndex: savedLevelIndex,
+          currentLevel: level || LEVELS[0],
           player: {
             id: user.id,
             name: user.username,
-            position: user.position || { x: 7, y: 6 },
+            position: user.position || level?.startPosition || { x: 1, y: 1 },
             direction: 'down',
             score: user.score || 0,
             inventory: user.inventory || [],
@@ -116,12 +219,16 @@ export const useGameStore = create((set, get) => ({
   logout: async () => {
     await get().saveProgressNow(true)
     localStorage.removeItem('ai-town-user')
+    
+    const firstLevel = LEVELS[0]
     set({
       isLoggedIn: false,
+      currentLevelIndex: 0,
+      currentLevel: firstLevel,
       player: {
         id: null,
         name: '',
-        position: { x: 7, y: 6 },
+        position: firstLevel?.startPosition || { x: 1, y: 1 },
         direction: 'down',
         score: 0,
         inventory: [],
@@ -130,6 +237,7 @@ export const useGameStore = create((set, get) => ({
       },
       chatHistory: [],
       assistantConversationId: null,
+      showLevelSelect: false,
     })
     get().showToast('已退出登录', 'info')
   },
@@ -221,6 +329,13 @@ export const useGameStore = create((set, get) => ({
     get().scheduleSaveProgress()
   },
 
+  setPlayerAvatar: (avatarUrl) => {
+    set((state) => ({
+      player: { ...state.player, avatar: avatarUrl },
+    }))
+    get().scheduleSaveProgress()
+  },
+
   // ========================================
   // NPC 通关系统
   // ========================================
@@ -254,6 +369,11 @@ export const useGameStore = create((set, get) => ({
         },
       }))
       get().scheduleSaveProgress()
+      
+      // 检查关卡是否完成
+      setTimeout(() => {
+        get().checkLevelCompletion()
+      }, 1000)
     }
   },
 
@@ -290,23 +410,34 @@ export const useGameStore = create((set, get) => ({
   },
 
   // ========================================
-  // 碰撞检测
+  // 碰撞检测（使用当前关卡数据）
   // ========================================
   canInteractWithNPC: (npcId) => {
     const state = get()
-    const npc = NPCS.find((n) => n.id === npcId)
+    const { currentLevel, player } = state
+    if (!currentLevel) return false
+
+    const npc = currentLevel.npcs.find((n) => n.id === npcId)
     if (!npc) return false
 
+    // 支持两种位置格式：{ x, y } 或 { position: { x, y } }
+    const npcX = npc.x ?? npc.position?.x ?? 0
+    const npcY = npc.y ?? npc.position?.y ?? 0
+
     const distance =
-      Math.abs(npc.x - state.player.position.x) +
-      Math.abs(npc.y - state.player.position.y)
+      Math.abs(npcX - player.position.x) +
+      Math.abs(npcY - player.position.y)
     return distance <= 1.5
   },
 
   canMoveTo: (x, y) => {
-    if (y < 0 || y >= INITIAL_MAP.length) return false
-    if (x < 0 || x >= INITIAL_MAP[0].length) return false
-    return INITIAL_MAP[y][x] !== 9
+    const { currentLevel } = get()
+    if (!currentLevel || !currentLevel.map) return false
+
+    const map = currentLevel.map
+    if (y < 0 || y >= map.length) return false
+    if (x < 0 || x >= map[0].length) return false
+    return map[y][x] !== 9
   },
 
   // ========================================
@@ -343,6 +474,7 @@ export const useGameStore = create((set, get) => ({
           position: state.player.position,
           avatar: state.player.avatar,
           completed_npcs: state.player.completedNPCs,
+          level_index: state.currentLevelIndex, // 保存当前关卡
         },
         { forceSave: force }
       )

@@ -1,16 +1,30 @@
 import { useState } from 'react'
 import { useGameStore } from '../store/gameStore'
-import { NPCS } from '../config/gameConfig'
+import { LEVELS, getRequiredNPCIds } from '../config/levels'
 import { uploadAvatarFile } from '../services/api'
 
 function PlayerPanel() {
-  const { player, leaderboard, uploadAvatar, logout, fetchLeaderboard, showToast } =
-    useGameStore()
+  const {
+    player,
+    leaderboard,
+    uploadAvatar,
+    logout,
+    fetchLeaderboard,
+    showToast,
+    currentLevelIndex,
+    currentLevel,
+    toggleLevelSelect,
+    getLevelProgress,
+  } = useGameStore()
   const [isUploading, setIsUploading] = useState(false)
 
+  // 计算当前关卡进度
+  const levelProgress = getLevelProgress(currentLevelIndex)
+  
+  // 计算总体进度
+  const totalNPCs = LEVELS.reduce((sum, level) => sum + getRequiredNPCIds(level).length, 0)
   const completedCount = player.completedNPCs?.length || 0
-  const totalNPCs = NPCS.length
-  const progressPercent = Math.round((completedCount / totalNPCs) * 100)
+  const totalProgressPercent = totalNPCs > 0 ? Math.round((completedCount / totalNPCs) * 100) : 0
 
   const handleAvatarUpload = async (e) => {
     const file = e.target.files[0]
@@ -71,29 +85,62 @@ function PlayerPanel() {
         <h2 className="mt-2 text-yellow-400 text-sm font-bold">{player.name}</h2>
         <div className="text-xs text-gray-400">积分: {player.score}</div>
 
-        {/* 进度条 */}
-        <div className="w-full mt-2">
+        {/* 退出按钮 */}
+        <button
+          onClick={logout}
+          className="mt-2 text-[10px] text-gray-500 hover:text-red-400 transition-colors"
+        >
+          退出登录
+        </button>
+      </div>
+
+      {/* 关卡信息 */}
+      <div className="border-b border-white/10 pb-4">
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="text-xs text-purple-400">🎮 当前关卡</h3>
+          <button
+            onClick={toggleLevelSelect}
+            className="text-[10px] text-gray-400 hover:text-white px-2 py-0.5 rounded border border-gray-600 hover:border-white/50 transition-colors"
+          >
+            选择关卡
+          </button>
+        </div>
+        
+        <div className="bg-white/5 rounded-lg p-3">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-lg font-bold text-yellow-400">第 {currentLevel?.id || 1} 关</span>
+            <span className="text-xs text-gray-300">{currentLevel?.name}</span>
+          </div>
+          <p className="text-[10px] text-gray-400 mb-2">{currentLevel?.description}</p>
+          
+          {/* 当前关卡进度 */}
           <div className="flex justify-between text-[10px] text-gray-500 mb-1">
-            <span>通关进度</span>
-            <span>
-              {completedCount}/{totalNPCs} ({progressPercent}%)
-            </span>
+            <span>关卡进度</span>
+            <span>{levelProgress.completed}/{levelProgress.total} ({levelProgress.percent}%)</span>
           </div>
           <div className="h-1.5 bg-gray-700 rounded-full overflow-hidden">
             <div
-              className="h-full bg-gradient-to-r from-cyan-500 to-purple-500 transition-all duration-500"
-              style={{ width: `${progressPercent}%` }}
+              className={`h-full transition-all duration-500 ${
+                levelProgress.percent === 100 ? 'bg-green-500' : 'bg-blue-500'
+              }`}
+              style={{ width: `${levelProgress.percent}%` }}
             />
           </div>
         </div>
 
-        {/* 退出按钮 */}
-        <button
-          onClick={logout}
-          className="mt-3 text-[10px] text-gray-500 hover:text-red-400 transition-colors"
-        >
-          退出登录
-        </button>
+        {/* 总体进度 */}
+        <div className="mt-3">
+          <div className="flex justify-between text-[10px] text-gray-500 mb-1">
+            <span>总体进度</span>
+            <span>{completedCount}/{totalNPCs} ({totalProgressPercent}%)</span>
+          </div>
+          <div className="h-1.5 bg-gray-700 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-gradient-to-r from-cyan-500 to-purple-500 transition-all duration-500"
+              style={{ width: `${totalProgressPercent}%` }}
+            />
+          </div>
+        </div>
       </div>
 
       {/* 物品栏 */}

@@ -61,6 +61,7 @@ router.post('/login', async (req, res) => {
         inventory: [],
         position: { x: 7, y: 6 },
         completed_npcs: [],
+        level_index: 0,
       },
     })
   } catch (error) {

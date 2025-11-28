@@ -1,5 +1,5 @@
 import { useGameStore } from '../store/gameStore'
-import { CELL_SIZE } from '../config/gameConfig'
+import { CELL_SIZE } from '../config/levels'
 
 function Player() {
   const { player } = useGameStore()

@@ -6,6 +6,7 @@ import AIAssistant from './components/AIAssistant'
 import ControlHint from './components/ControlHint'
 import Toast from './components/Toast'
 import LoginScreen from './components/LoginScreen'
+import LevelSelect from './components/LevelSelect'
 import { useGameStore } from './store/gameStore'
 
 function App() {
@@ -43,6 +44,9 @@ function App() {
 
       {/* NPC对话框 (全局覆盖) */}
       <NPCDialog />
+
+      {/* 关卡选择界面 */}
+      <LevelSelect />
 
       {/* AI助教 */}
       <AIAssistant />

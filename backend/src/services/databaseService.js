@@ -170,6 +170,7 @@ export async function getUserProgress(userId) {
       position: row.position || { x: 7, y: 6 },
       avatar: row.avatar,
       completed_npcs: row.completed_npcs || [],
+      level_index: row.level_index || 0,
       updated_at: row.updated_at,
     }
   } catch (error) {
@@ -215,29 +216,68 @@ export async function saveUserProgress(userId, data) {
   }
 
   try {
-    const result = await query(
-      `INSERT INTO user_progress (user_id, score, inventory, position, avatar, completed_npcs, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, NOW())
-       ON CONFLICT (user_id)
-       DO UPDATE SET
-         score = EXCLUDED.score,
-         inventory = EXCLUDED.inventory,
-         position = EXCLUDED.position,
-         avatar = EXCLUDED.avatar,
-         completed_npcs = EXCLUDED.completed_npcs,
-         updated_at = NOW()
-       RETURNING *`,
-      [
-        userId,
-        data.score || 0,
-        JSON.stringify(data.inventory || []),
-        JSON.stringify(data.position || { x: 7, y: 6 }),
-        data.avatar || null,
-        JSON.stringify(data.completed_npcs || []),
-      ]
-    )
+    // 先尝试检查 level_index 字段是否存在
+    const checkColumn = await query(`
+      SELECT column_name 
+      FROM information_schema.columns 
+      WHERE table_name = 'user_progress' AND column_name = 'level_index'
+    `)
+    
+    const hasLevelIndex = checkColumn.rows.length > 0
 
-    console.log(`[Database] 用户 ${userId} 进度已保存，积分: ${data.score || 0}`)
+    let result
+    if (hasLevelIndex) {
+      // 如果字段存在，使用完整 SQL
+      result = await query(
+        `INSERT INTO user_progress (user_id, score, inventory, position, avatar, completed_npcs, level_index, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+         ON CONFLICT (user_id)
+         DO UPDATE SET
+           score = EXCLUDED.score,
+           inventory = EXCLUDED.inventory,
+           position = EXCLUDED.position,
+           avatar = EXCLUDED.avatar,
+           completed_npcs = EXCLUDED.completed_npcs,
+           level_index = EXCLUDED.level_index,
+           updated_at = NOW()
+         RETURNING *`,
+        [
+          userId,
+          data.score || 0,
+          JSON.stringify(data.inventory || []),
+          JSON.stringify(data.position || { x: 7, y: 6 }),
+          data.avatar || null,
+          JSON.stringify(data.completed_npcs || []),
+          data.level_index || 0,
+        ]
+      )
+      console.log(`[Database] 用户 ${userId} 进度已保存，积分: ${data.score || 0}, 关卡: ${data.level_index || 0}`)
+    } else {
+      // 如果字段不存在，使用不包含 level_index 的 SQL
+      result = await query(
+        `INSERT INTO user_progress (user_id, score, inventory, position, avatar, completed_npcs, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, NOW())
+         ON CONFLICT (user_id)
+         DO UPDATE SET
+           score = EXCLUDED.score,
+           inventory = EXCLUDED.inventory,
+           position = EXCLUDED.position,
+           avatar = EXCLUDED.avatar,
+           completed_npcs = EXCLUDED.completed_npcs,
+           updated_at = NOW()
+         RETURNING *`,
+        [
+          userId,
+          data.score || 0,
+          JSON.stringify(data.inventory || []),
+          JSON.stringify(data.position || { x: 7, y: 6 }),
+          data.avatar || null,
+          JSON.stringify(data.completed_npcs || []),
+        ]
+      )
+      console.log(`[Database] 用户 ${userId} 进度已保存，积分: ${data.score || 0} (level_index 字段不存在，已跳过)`)
+    }
+
     return result.rows[0]
   } catch (error) {
     console.error('[Database] 保存进度失败:', error.message)
@@ -370,6 +410,7 @@ function getDefaultProgress() {
     position: { x: 7, y: 6 },
     avatar: null,
     completed_npcs: [],
+    level_index: 0,
   }
 }
 

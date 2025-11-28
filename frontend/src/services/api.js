@@ -126,17 +126,24 @@ export const getLeaderboard = async (limit = 10) => {
 
 /**
  * 验证任务提交
- * @param {Object} data - { npcType, content, keywords }
+ * @param {Object} npcConfig - NPC 配置 { type, workflowId?, botId? }
+ * @param {string} content - 用户提交的内容
  * @returns {Promise<Object>} { passed, feedback }
  */
-export const validateTask = async (data) => {
+export const validateTask = async (npcConfig, content) => {
   try {
-    const response = await api.post('/api/validate', data)
+    const response = await api.post('/api/validate', {
+      npcConfig,
+      content,
+    })
     return response.data
   } catch (error) {
     console.error('Validation API error:', error)
-    // 降级到本地验证
-    return localValidate(data)
+    // 降级返回
+    return {
+      passed: false,
+      feedback: '验证服务暂时不可用，请稍后重试',
+    }
   }
 }
 
@@ -160,32 +167,6 @@ export const askAssistant = async ({ message, conversationId }) => {
       answer:
         '这是一个模拟的 AI 助教回复。在真实版本中，这里会连接 Coze API 来解答你关于 AI 的问题。',
       conversationId,
-    }
-  }
-}
-
-/**
- * 本地验证逻辑（降级方案）
- */
-function localValidate({ npcType, content, keywords }) {
-  const lowerContent = content.toLowerCase()
-  const hasAllKeywords = keywords.every((keyword) =>
-    content.includes(keyword) || lowerContent.includes(keyword.toLowerCase())
-  )
-
-  if (hasAllKeywords) {
-    return {
-      passed: true,
-      feedback: `包含了所有关键要素：${keywords.join('、')}！做得很好！`,
-    }
-  } else {
-    const missing = keywords.filter(
-      (keyword) =>
-        !content.includes(keyword) && !lowerContent.includes(keyword.toLowerCase())
-    )
-    return {
-      passed: false,
-      feedback: `缺少关键要素：${missing.join('、')}。请补充完整。`,
     }
   }
 }

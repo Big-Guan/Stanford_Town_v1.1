@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS user_progress (
     position JSONB DEFAULT '{"x": 7, "y": 6}'::jsonb,
     avatar TEXT,
     completed_npcs JSONB DEFAULT '[]'::jsonb,  -- 已完成的NPC列表
+    level_index INTEGER DEFAULT 0,              -- 当前关卡索引 (v3新增)
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 

@@ -6,63 +6,59 @@ const router = express.Router()
 /**
  * POST /api/validate
  * 验证用户提交的任务
+ * 
+ * 请求体格式:
+ * {
+ *   npcConfig: {
+ *     type: 'workflow' | 'bot',
+ *     workflowId?: string,  // type='workflow' 时必填
+ *     botId?: string,       // type='bot' 时必填
+ *   },
+ *   content: string,  // 用户提交的内容
+ * }
  */
 router.post('/', async (req, res) => {
   try {
-    const { npcType, content, keywords } = req.body
+    const { npcConfig, content } = req.body
 
     // 参数验证
-    if (!npcType || !content) {
+    if (!content) {
       return res.status(400).json({
-        error: '缺少必要参数',
+        error: '缺少必要参数: content',
         passed: false,
       })
     }
 
-    console.log(`[Validate] NPC类型: ${npcType}, 内容长度: ${content.length}`)
+    if (!npcConfig) {
+      return res.status(400).json({
+        error: '缺少必要参数: npcConfig',
+        passed: false,
+      })
+    }
+
+    // 验证至少有一个 ID
+    if (!npcConfig.workflowId && !npcConfig.botId) {
+      return res.status(400).json({
+        error: 'NPC 配置需要提供 workflowId 或 botId',
+        passed: false,
+      })
+    }
+
+    console.log(`[Validate] 类型: ${npcConfig.type}, ID: ${npcConfig.workflowId || npcConfig.botId}, 内容长度: ${content.length}`)
 
     // 调用Coze API验证
-    const result = await validateWithCoze(npcType, content, keywords)
+    const result = await validateWithCoze(npcConfig, content)
 
     res.json(result)
   } catch (error) {
     console.error('Validation error:', error)
     
-    // 降级到本地验证
-    const localResult = localValidate(req.body)
-    res.json(localResult)
+    // 返回错误信息
+    res.status(500).json({
+      passed: false,
+      feedback: '验证服务暂时不可用，请稍后重试',
+    })
   }
 })
 
-/**
- * 本地验证逻辑（降级方案）
- */
-function localValidate({ content, keywords = [] }) {
-  if (!keywords || keywords.length === 0) {
-    return {
-      passed: true,
-      feedback: '基本验证通过！（本地验证模式）',
-    }
-  }
-
-  const lowerContent = content.toLowerCase()
-  const missingKeywords = keywords.filter(
-    (keyword) =>
-      !content.includes(keyword) && !lowerContent.includes(keyword.toLowerCase())
-  )
-
-  if (missingKeywords.length === 0) {
-    return {
-      passed: true,
-      feedback: `包含了所有关键要素：${keywords.join('、')}！做得很好！（本地验证模式）`,
-    }
-  } else {
-    return {
-      passed: false,
-      feedback: `缺少关键要素：${missingKeywords.join('、')}。请补充完整。`,
-    }
-  }
-}
-
 export default router
-

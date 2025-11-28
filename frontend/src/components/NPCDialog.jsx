@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useGameStore } from '../store/gameStore'
 import { validateTask } from '../services/api'
-import { DROP_RATE, PRIZE_POOL } from '../config/gameConfig'
+import { DROP_RATE, PRIZE_POOL } from '../config/levels'
 
 function NPCDialog() {
   const {
@@ -14,12 +14,26 @@ function NPCDialog() {
     showToast,
     isNPCCompleted,
     markNPCCompleted,
+    currentLevel,
   } = useGameStore()
   const [isLoading, setIsLoading] = useState(false)
+  const [feedback, setFeedback] = useState(null) // { message: string, passed: boolean }
 
   if (!activeNPC) return null
 
+  // 如果是 assistant 类型，不显示对话框（由 AIAssistant 组件处理）
+  if (activeNPC.type === 'assistant') {
+    return null
+  }
+
   const alreadyCompleted = isNPCCompleted(activeNPC.id)
+  const reward = activeNPC.reward || 100
+
+  const handleClose = () => {
+    setActiveNPC(null)
+    setFeedback(null)
+    setChatInput('')
+  }
 
   const handleSubmit = async () => {
     if (!chatInput.trim()) {
@@ -28,13 +42,22 @@ function NPCDialog() {
     }
 
     setIsLoading(true)
+    setFeedback(null)
 
     try {
+      // 构建 NPC 配置对象传递给后端
+      const npcConfig = {
+        type: activeNPC.type,  // 'workflow' | 'bot'
+        workflowId: activeNPC.workflowId,
+        botId: activeNPC.botId,
+      }
+
       // 调用API验证
-      const result = await validateTask({
-        npcType: activeNPC.type,
-        content: chatInput,
-        keywords: activeNPC.keywords,
+      const result = await validateTask(npcConfig, chatInput)
+
+      setFeedback({
+        message: result.feedback,
+        passed: result.passed
       })
 
       if (result.passed) {
@@ -49,7 +72,7 @@ function NPCDialog() {
 
         if (!alreadyCompleted) {
           // 首次通关，给予积分
-          addScore(100)
+          addScore(reward)
 
           // 随机掉落
           if (Math.random() < DROP_RATE) {
@@ -57,23 +80,7 @@ function NPCDialog() {
             addInventory(prize)
             showToast(`🎉 运气爆棚！获得稀有物品：${prize}`, 'success', 5000)
           }
-
-          showToast(
-            `✅ 首次通关成功！\nAI 评价：${result.feedback}\n积分 +100`,
-            'success',
-            5000
-          )
-        } else {
-          // 重复通关，不给积分
-          showToast(
-            `✅ 练习成功！\nAI 评价：${result.feedback}\n（已通关，不重复计分）`,
-            'info',
-            5000
-          )
         }
-
-        setActiveNPC(null)
-        setChatInput('')
       } else {
         // 验证失败
         await markNPCCompleted(
@@ -83,7 +90,6 @@ function NPCDialog() {
           result.feedback,
           false
         )
-        showToast(`❌ 验证失败\nAI 评价：${result.feedback}\n请重试！`, 'error', 5000)
       }
     } catch (error) {
       console.error('Validation error:', error)
@@ -95,9 +101,9 @@ function NPCDialog() {
 
   return (
     <div className="absolute inset-0 bg-black/60 z-50 flex items-center justify-center backdrop-blur-sm animate-fadeIn">
-      <div className="glass-panel w-[500px] p-6 rounded-xl relative flex flex-col gap-4">
+      <div className="glass-panel w-[500px] p-6 rounded-xl relative flex flex-col gap-4 max-h-[90vh] overflow-y-auto">
         <button
-          onClick={() => setActiveNPC(null)}
+          onClick={handleClose}
           className="absolute top-4 right-4 text-gray-400 hover:text-white text-xl"
           disabled={isLoading}
         >
@@ -116,13 +122,13 @@ function NPCDialog() {
               )}
             </div>
             <p className="text-xs text-gray-400">
-              {activeNPC.title} | Coze 智能体支持
+              {currentLevel?.name} | {activeNPC.type === 'workflow' ? 'Workflow' : 'Bot'} 验证
             </p>
           </div>
         </div>
 
         {/* 已通关提示 */}
-        {alreadyCompleted && (
+        {alreadyCompleted && !feedback && (
           <div className="bg-green-900/20 border border-green-500/30 p-3 rounded text-xs text-green-300 flex items-center gap-2">
             <span>🎓</span>
             <span>你已通关此任务！可以继续练习，但不会重复获得积分。</span>
@@ -131,7 +137,7 @@ function NPCDialog() {
 
         <div className="bg-black/30 p-4 rounded text-sm text-gray-200 border border-white/5">
           <span className="text-yellow-400 font-bold">任务目标：</span>
-          {activeNPC.desc}
+          {activeNPC.task || activeNPC.desc}
         </div>
 
         <textarea
@@ -141,6 +147,28 @@ function NPCDialog() {
           onChange={(e) => setChatInput(e.target.value)}
           disabled={isLoading}
         ></textarea>
+
+        {/* 反馈显示区域 */}
+        {feedback && (
+          <div className={`p-3 rounded text-xs border animate-fadeIn ${
+            feedback.passed 
+              ? 'bg-green-900/20 border-green-500/30 text-green-200' 
+              : 'bg-red-900/20 border-red-500/30 text-red-200'
+          }`}>
+            <div className="font-bold mb-1 flex items-center gap-2">
+              <span className="text-lg">{feedback.passed ? '✅' : '❌'}</span>
+              <span>AI 评价：</span>
+            </div>
+            <div className="leading-relaxed whitespace-pre-wrap">
+              {feedback.message}
+            </div>
+            {feedback.passed && !alreadyCompleted && (
+              <div className="mt-2 text-yellow-400 font-bold">
+                积分 +{reward}
+              </div>
+            )}
+          </div>
+        )}
 
         <button
           onClick={handleSubmit}
@@ -154,7 +182,7 @@ function NPCDialog() {
           {isLoading ? (
             <>
               <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
-              智能体思考中...
+              AI 验证中...
             </>
           ) : alreadyCompleted ? (
             <>
@@ -162,7 +190,7 @@ function NPCDialog() {
             </>
           ) : (
             <>
-              <span>✓</span> 提交作业 (验证)
+              <span>✓</span> 提交作业
             </>
           )}
         </button>

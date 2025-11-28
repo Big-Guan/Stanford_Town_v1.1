@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useMemo } from 'react'
 import { useGameStore } from '../store/gameStore'
-import { INITIAL_MAP, NPCS, CELL_SIZE, MAP_WIDTH, MAP_HEIGHT } from '../config/gameConfig'
+import { CELL_SIZE, MAP_WIDTH, MAP_HEIGHT } from '../config/levels'
 import Player from './Player'
 import NPC from './NPC'
 
@@ -9,21 +9,30 @@ function GameMap() {
     player,
     activeNPC,
     showHelper,
+    showLevelSelect,
+    currentLevel,
     updatePosition,
     updateDirection,
     canMoveTo,
   } = useGameStore()
+  
   const containerRef = useRef(null)
   const [scale, setScale] = useState(1)
 
+  // 从当前关卡获取地图和NPC
+  const currentMap = currentLevel?.map || []
+  const currentNPCs = currentLevel?.npcs || []
+  
+  // 计算地图尺寸（使用关卡配置或默认值）
+  const mapWidth = currentMap[0]?.length || MAP_WIDTH
+  const mapHeight = currentMap.length || MAP_HEIGHT
+
   // 生成装饰物缓存，避免重绘闪烁
-  // 0: 无, 1: 花, 2: 草, 3: 石头
   const decorations = useMemo(() => {
     const decos = {}
-    INITIAL_MAP.forEach((row, y) => {
+    currentMap.forEach((row, y) => {
       row.forEach((cell, x) => {
         if (cell === 0) {
-          // 简单的伪随机
           const seed = (x * 123 + y * 456) % 100
           if (seed < 5) decos[`${x}-${y}`] = 'deco-flower'
           else if (seed < 15) decos[`${x}-${y}`] = 'deco-grass'
@@ -32,7 +41,7 @@ function GameMap() {
       })
     })
     return decos
-  }, [])
+  }, [currentMap])
 
   // 自适应缩放计算
   useEffect(() => {
@@ -43,8 +52,8 @@ function GameMap() {
           const availableWidth = parent.clientWidth - 32
           const availableHeight = parent.clientHeight - 32
           
-          const mapPixelWidth = MAP_WIDTH * CELL_SIZE
-          const mapPixelHeight = MAP_HEIGHT * CELL_SIZE
+          const mapPixelWidth = mapWidth * CELL_SIZE
+          const mapPixelHeight = mapHeight * CELL_SIZE
           
           const scaleX = availableWidth / mapPixelWidth
           const scaleY = availableHeight / mapPixelHeight
@@ -58,12 +67,13 @@ function GameMap() {
     setTimeout(handleResize, 100)
     
     return () => window.removeEventListener('resize', handleResize)
-  }, [])
+  }, [mapWidth, mapHeight])
 
   // 键盘移动控制
   useEffect(() => {
     const handleKeyDown = (e) => {
-      if (activeNPC || showHelper) return
+      // 对话时或关卡选择时禁止移动
+      if (activeNPC || showHelper || showLevelSelect) return
 
       let dx = 0,
         dy = 0
@@ -94,20 +104,28 @@ function GameMap() {
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [player, activeNPC, showHelper, canMoveTo, updatePosition, updateDirection])
+  }, [player, activeNPC, showHelper, showLevelSelect, canMoveTo, updatePosition, updateDirection])
+
+  if (!currentLevel) {
+    return (
+      <div className="flex items-center justify-center h-full text-gray-400">
+        加载关卡中...
+      </div>
+    )
+  }
 
   return (
     <div
       ref={containerRef}
       className="relative glass-panel rounded-xl overflow-hidden shadow-2xl origin-center transition-transform duration-300 bg-[#0f172a]"
       style={{
-        width: MAP_WIDTH * CELL_SIZE,
-        height: MAP_HEIGHT * CELL_SIZE,
+        width: mapWidth * CELL_SIZE,
+        height: mapHeight * CELL_SIZE,
         transform: `scale(${scale})`,
       }}
     >
       {/* 1. 渲染地图层 */}
-      {INITIAL_MAP.map((row, y) => (
+      {currentMap.map((row, y) => (
         <div key={y} className="flex">
           {row.map((cell, x) => (
             <div
@@ -125,12 +143,18 @@ function GameMap() {
       ))}
 
       {/* 2. 渲染 NPC */}
-      {NPCS.map((npc) => (
+      {currentNPCs.map((npc) => (
         <NPC key={npc.id} npc={npc} />
       ))}
 
       {/* 3. 渲染玩家 */}
       <Player />
+
+      {/* 4. 关卡信息浮层 */}
+      <div className="absolute top-2 left-2 bg-black/70 px-3 py-1.5 rounded-lg text-xs">
+        <span className="text-yellow-400 font-bold">第 {currentLevel.id} 关</span>
+        <span className="text-gray-300 ml-2">{currentLevel.name}</span>
+      </div>
     </div>
   )
 }
